@@ -6,7 +6,6 @@
 __device__ int done = 0;
 __device__ unsigned long long count = 0;
 __device__ bool d_case_insensitive = false;
-__device__ bool d_leet_speak = false;
 
 // TODO:
 // 1) Should maybe write a macro for the err handling
@@ -23,8 +22,7 @@ extern "C" void vanity_round(
     char *any,
     uint64_t any_len,
     uint8_t *out,
-    bool case_insensitive,
-    bool leet_speak)
+    bool case_insensitive)
 {
     int deviceCount;
     cudaGetDeviceCount(&deviceCount);
@@ -174,15 +172,6 @@ extern "C" void vanity_round(
     if (err != cudaSuccess)
     {
         printf("CUDA memcpy to symbol error (count): %s\n", cudaGetErrorString(err));
-        cudaFree(d_buffer);
-        return;
-    }
-
-    // Copy leet_speak setting to device
-    err = cudaMemcpyToSymbol(d_leet_speak, &leet_speak, sizeof(bool));
-    if (err != cudaSuccess)
-    {
-        printf("CUDA memcpy to symbol error (leet_speak): %s\n", cudaGetErrorString(err));
         cudaFree(d_buffer);
         return;
     }
@@ -362,65 +351,6 @@ vanity_search(uint8_t *buffer, uint64_t stride)
     }
 }
 
-__device__ bool chars_match_leet(char a, char b)
-{
-    if (a == b)
-        return true;
-
-    switch (a)
-    {
-    case 'a':
-    case 'A':
-        return b == '4';
-    case 'e':
-    case 'E':
-        return b == '3';
-    case 't':
-    case 'T':
-        return b == '7';
-    case 'l':
-    case 'L':
-        return b == '1';
-    case 'i':
-    case 'I':
-        return b == '1';
-    case 's':
-    case 'S':
-        return b == '5';
-    case 'g':
-    case 'G':
-        return b == '6';
-    case 'b':
-    case 'B':
-        return b == '8';
-    case 'z':
-    case 'Z':
-        return b == '2';
-    }
-
-    switch (b)
-    {
-    case '4':
-        return a == 'a' || a == 'A';
-    case '3':
-        return a == 'e' || a == 'E';
-    case '7':
-        return a == 't' || a == 'T';
-    case '1':
-        return a == 'l' || a == 'L' || a == 'i' || a == 'I';
-    case '5':
-        return a == 's' || a == 'S';
-    case '6':
-        return a == 'g' || a == 'G';
-    case '8':
-        return a == 'b' || a == 'B';
-    case '2':
-        return a == 'z' || a == 'Z';
-    }
-
-    return false;
-}
-
 __device__ bool matches_search(
     unsigned char *address,
     unsigned char *prefix,
@@ -440,15 +370,7 @@ __device__ bool matches_search(
         // Check prefix
         for (int i = 0; i < prefix_len; i++)
         {
-            if (d_leet_speak)
-            {
-                if (!chars_match_leet(prefix[i], address[i]))
-                {
-                    prefix_matches = false;
-                    break;
-                }
-            }
-            else if (address[i] != prefix[i])
+            if (address[i] != prefix[i])
             {
                 prefix_matches = false;
                 break;
@@ -461,15 +383,7 @@ __device__ bool matches_search(
         // Check suffix
         for (int i = 0; i < suffix_len; i++)
         {
-            if (d_leet_speak)
-            {
-                if (!chars_match_leet(suffix[i], address[44 - suffix_len + i]))
-                {
-                    suffix_matches = false;
-                    break;
-                }
-            }
-            else if (address[44 - suffix_len + i] != suffix[i])
+            if (address[44 - suffix_len + i] != suffix[i])
             {
                 suffix_matches = false;
                 break;
@@ -486,15 +400,7 @@ __device__ bool matches_search(
             bool match = true;
             for (int j = 0; j < any_len; j++)
             {
-                if (d_leet_speak)
-                {
-                    if (!chars_match_leet(any[j], address[i + j]))
-                    {
-                        match = false;
-                        break;
-                    }
-                }
-                else if (address[i + j] != any[j])
+                if (address[i + j] != any[j])
                 {
                     match = false;
                     break;
@@ -543,7 +449,6 @@ __device__ bool matches_search(
                    any_len, any_str, any_matches ? "YES" : "NO");
         }
 
-        printf("Leet speak: %s\n", d_leet_speak ? "enabled" : "disabled");
         printf("Case insensitive: %s\n", d_case_insensitive ? "enabled" : "disabled");
     }
 

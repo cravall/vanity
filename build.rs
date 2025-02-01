@@ -9,7 +9,10 @@ fn get_compute_capability() -> Option<(i32, i32)> {
 
     // Try to run nvidia-smi to get device info
     let output = Command::new("nvidia-smi")
-        .args(["--query-gpu=compute_cap_major,compute_cap_minor", "--format=csv,noheader,nounits"])
+        .args([
+            "--query-gpu=compute_cap_major,compute_cap_minor",
+            "--format=csv,noheader,nounits",
+        ])
         .output()
         .ok()?;
 

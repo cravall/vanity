@@ -60,10 +60,6 @@ pub struct GrindArgs {
     #[clap(long = "ci", default_value_t = false)]
     pub case_insensitive: bool,
 
-    /// Whether to match leet speak variants (e.g. a=4, e=3, etc)
-    #[clap(long = "leet", default_value_t = false)]
-    pub leet_speak: bool,
-
     /// Optional log file
     #[clap(long)]
     pub logfile: Option<String>,
@@ -277,7 +273,6 @@ fn grind(mut args: GrindArgs) {
                                 any.len() as u64,
                                 out.as_mut_ptr(),
                                 args.case_insensitive,
-                                args.leet_speak
                             );
                         }
                         let time_sec = timer.elapsed().as_secs_f64();
@@ -305,36 +300,8 @@ fn grind(mut args: GrindArgs) {
                             prefix,
                             suffix,
                             any,
-                            args.case_insensitive,
-                            args.leet_speak
+                            args.case_insensitive
                         );
-
-                        // If CUDA found a match but Rust validation fails, print debug info
-                        if !rust_matches && (count > 0 || out[16..24].iter().any(|&x| x != 0)) {
-                            logfather::error!("\nMISMATCH DETECTED!");
-                            logfather::error!("CUDA found a match but Rust validation failed");
-                            logfather::error!("Address: {}", pubkey);
-                            logfather::error!("Search criteria:");
-                            logfather::error!("  Prefix: '{}'", prefix);
-                            logfather::error!("  Suffix: '{}'", suffix);
-                            logfather::error!("  Any: '{}'", any);
-                            logfather::error!("  Case insensitive: {}", if args.case_insensitive {
-                                "enabled"
-                            } else {
-                                "disabled"
-                            });
-                            logfather::error!("  Leet speak: {}", if args.leet_speak {
-                                "enabled"
-                            } else {
-                                "disabled"
-                            });
-                            logfather::error!("Seed info:");
-                            logfather::error!("  Bytes: {:?}", &out[..16]);
-                            logfather::error!(
-                                "  UTF-8: {}",
-                                core::str::from_utf8(&out[..16]).unwrap_or("Invalid UTF-8")
-                            );
-                        }
 
                         if rust_matches {
                             logfather::info!("\nGPU MATCH FOUND!");
@@ -345,14 +312,14 @@ fn grind(mut args: GrindArgs) {
                                 core::str::from_utf8(&out[..16]).unwrap_or("Invalid UTF-8")
                             );
 
-                            let output_dir = PathBuf::from("/mnt/f/coding/vanity/keys");
+                            let output_dir = PathBuf::from("./keys");
                             if let Err(err) = save_vanity_key(&pubkey, &out[..16], &output_dir) {
                                 logfather::error!("{}", err);
-                                return;
+                                // return;
                             }
-                            EXIT.store(true, Ordering::SeqCst);
-                            logfather::trace!("gpu thread {gpu_index} exiting");
-                            return;
+                            // EXIT.store(true, Ordering::SeqCst);
+                            // logfather::trace!("gpu thread {gpu_index} exiting");
+                            // return;
                         } else {
                             logfather::debug!("pubkey does not match prefix or suffix");
                         }
@@ -391,8 +358,7 @@ fn grind(mut args: GrindArgs) {
                     prefix,
                     suffix,
                     any,
-                    args.case_insensitive,
-                    args.leet_speak
+                    args.case_insensitive
                 )
             {
                 let time_secs = timer.elapsed().as_secs_f64();
@@ -404,13 +370,13 @@ fn grind(mut args: GrindArgs) {
                     (((count as f64) / time_secs) as u64).to_formatted_string(&Locale::en)
                 );
 
-                let output_dir = PathBuf::from("/mnt/f/coding/vanity/keys");
+                let output_dir = PathBuf::from("./keys");
                 if let Err(err) = save_vanity_key(&pubkey, &seed, &output_dir) {
                     logfather::error!("{}", err);
                     return;
                 }
-                EXIT.store(true, Ordering::SeqCst);
-                return;
+                // EXIT.store(true, Ordering::SeqCst);
+                // return;
             }
         }
     });
@@ -487,8 +453,7 @@ extern "C" {
         any: *const u8,
         any_len: u64,
         out: *mut u8,
-        case_insensitive: bool,
-        leet_speak: bool
+        case_insensitive: bool
     );
 
     fn get_gpu_count() -> i32;
@@ -542,82 +507,13 @@ fn save_vanity_key(pubkey: &str, seed: &[u8], output_dir: &PathBuf) -> Result<()
     Ok(())
 }
 
-fn generate_leet_patterns(input: &str) -> Vec<String> {
-    if input.is_empty() {
-        return vec![String::new()];
-    }
-
-    let mut patterns = vec![input.to_string()];
-
-    // First pass: generate patterns by replacing letters with numbers
-    for i in 0..input.len() {
-        let c = input.chars().nth(i).unwrap();
-        let replacement = match c {
-            'a' | 'A' => Some("4"),
-            'e' | 'E' => Some("3"),
-            't' | 'T' => Some("7"),
-            'l' | 'L' | 'i' | 'I' => Some("1"),
-            's' | 'S' => Some("5"),
-            'g' | 'G' => Some("6"),
-            'b' | 'B' => Some("8"),
-            'z' | 'Z' => Some("2"),
-            _ => None,
-        };
-
-        if let Some(repl) = replacement {
-            patterns.push(input[..i].to_string() + repl + &input[i + 1..]);
-        }
-    }
-
-    // Second pass: generate patterns by replacing numbers with letters
-    let mut number_patterns = Vec::new();
-    for pattern in &patterns {
-        for i in 0..pattern.len() {
-            let c = pattern.chars().nth(i).unwrap();
-            let replacements = match c {
-                '4' => vec!["a", "A"],
-                '3' => vec!["e", "E"],
-                '7' => vec!["t", "T"],
-                '1' => vec!["l", "L", "i", "I"],
-                '5' => vec!["s", "S"],
-                '6' => vec!["g", "G"],
-                '8' => vec!["b", "B"],
-                '2' => vec!["z", "Z"],
-                _ => vec![],
-            };
-
-            for repl in replacements {
-                number_patterns.push(pattern[..i].to_string() + repl + &pattern[i + 1..]);
-            }
-        }
-    }
-
-    patterns.extend(number_patterns);
-    patterns.sort();
-    patterns.dedup();
-    patterns
-}
 
 fn get_search_patterns(
     prefix: &str,
     suffix: &str,
-    any: &str,
-    leet_speak: bool
+    any: &str
 ) -> (Vec<String>, Vec<String>, Vec<String>) {
-    if leet_speak {
-        let prefix_patterns = generate_leet_patterns(prefix);
-        let suffix_patterns = generate_leet_patterns(suffix);
-        let any_patterns = generate_leet_patterns(any);
-
-        logfather::debug!("Generated leet patterns:");
-        logfather::debug!("  Prefix patterns: {:?}", prefix_patterns);
-        logfather::debug!("  Suffix patterns: {:?}", suffix_patterns);
-        logfather::debug!("  Any patterns: {:?}", any_patterns);
-
-        (prefix_patterns, suffix_patterns, any_patterns)
-    } else {
         (vec![prefix.to_string()], vec![suffix.to_string()], vec![any.to_string()])
-    }
 }
 
 fn check_matches(check_str: &str, patterns: &[String], match_type: &str) -> bool {
@@ -625,46 +521,17 @@ fn check_matches(check_str: &str, patterns: &[String], match_type: &str) -> bool
         "prefix" =>
             patterns.iter().any(|p| {
                 p.is_empty() ||
-                    check_str.starts_with(p) ||
-                    ({
-                        // Also check if any leet variation of the address matches the pattern
-                        let address_patterns = generate_leet_patterns(
-                            &check_str[..p.len().min(check_str.len())]
-                        );
-                        address_patterns.iter().any(|ap| ap == p)
-                    })
+                    check_str.starts_with(p)
             }),
         "suffix" =>
             patterns.iter().any(|s| {
                 s.is_empty() ||
-                    check_str.ends_with(s) ||
-                    ({
-                        // Also check if any leet variation of the address matches the pattern
-                        if s.len() <= check_str.len() {
-                            let address_patterns = generate_leet_patterns(
-                                &check_str[check_str.len() - s.len()..]
-                            );
-                            address_patterns.iter().any(|ap| ap == s)
-                        } else {
-                            false
-                        }
-                    })
+                    check_str.ends_with(s)
             }),
         "any" =>
             patterns.iter().any(|a| {
                 a.is_empty() ||
-                    check_str.contains(a) ||
-                    ({
-                        // Also check if any leet variation of any substring matches the pattern
-                        for i in 0..=check_str.len().saturating_sub(a.len()) {
-                            let substr = &check_str[i..i + a.len()];
-                            let address_patterns = generate_leet_patterns(substr);
-                            if address_patterns.iter().any(|ap| ap == a) {
-                                return true;
-                            }
-                        }
-                        false
-                    })
+                    check_str.contains(a)
             }),
         _ => false,
     };
@@ -677,8 +544,7 @@ fn matches_vanity_key(
     prefix: &str,
     suffix: &str,
     any: &str,
-    case_insensitive: bool,
-    leet_speak: bool
+    case_insensitive: bool
 ) -> bool {
     logfather::debug!("\nRust checking address: {}", pubkey_str);
     logfather::debug!("Search criteria:");
@@ -690,7 +556,6 @@ fn matches_vanity_key(
     } else {
         "disabled"
     });
-    logfather::debug!("  Leet speak: {}", if leet_speak { "enabled" } else { "disabled" });
 
     let check_str = if case_insensitive {
         maybe_bs58_aware_lowercase(pubkey_str, true)
@@ -702,8 +567,7 @@ fn matches_vanity_key(
     let (prefix_patterns, suffix_patterns, any_patterns) = get_search_patterns(
         prefix,
         suffix,
-        any,
-        leet_speak
+        any
     );
 
     let prefix_matches = check_matches(&check_str, &prefix_patterns, "prefix");

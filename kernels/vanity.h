@@ -16,8 +16,7 @@ extern "C" void vanity_round(
     char *any,
     uint64_t any_len,
     uint8_t *out,
-    bool case_insensitive,
-    bool leet_speak);
+    bool case_insensitive);
 __global__ void vanity_search(uint8_t *buffer, uint64_t stride);
 __device__ bool matches_search(
     unsigned char *a,
@@ -27,6 +26,5 @@ __device__ bool matches_search(
     uint64_t suffix_len,
     unsigned char *any,
     uint64_t any_len);
-__device__ bool chars_match_leet(char a, char b);
 
 #endif
